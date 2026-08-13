@@ -103,26 +103,6 @@
   }
   .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
-  .toggle {
-    display: flex; align-items: center; gap: 12px;
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: 14px; padding: 16px; cursor: pointer;
-  }
-  .toggle .tt { flex: 1; }
-  .toggle .tt b { display: block; font-size: 15px; margin-bottom: 3px; }
-  .toggle .tt span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
-  .toggle .sw {
-    width: 48px; height: 29px; border-radius: 15px; background: var(--surface-2);
-    position: relative; transition: background .15s; flex: none;
-  }
-  .toggle .sw::after {
-    content: ''; position: absolute; top: 3px; left: 3px;
-    width: 23px; height: 23px; border-radius: 50%; background: var(--muted);
-    transition: transform .15s, background .15s;
-  }
-  .toggle.on .sw { background: var(--accent); }
-  .toggle.on .sw::after { transform: translateX(19px); background: #fff; }
-
   /* ---------- 参加者一覧 ---------- */
   .roster { display: flex; flex-direction: column; gap: 8px; }
   .prow {
@@ -147,9 +127,6 @@
   }
   .topic-card .lb { font-size: 12px; color: var(--muted); font-weight: 600; }
   .topic { font-size: 25px; font-weight: 700; line-height: 1.45; margin-top: 10px; }
-  .mission-box { border-top: 1px dashed var(--line); padding-top: 14px; margin-top: 16px; }
-  .mission-box .ml { font-size: 11px; color: var(--accent); font-weight: 700; letter-spacing: .1em; }
-  .mission-box .mv { font-size: 15px; font-weight: 600; line-height: 1.5; margin-top: 5px; }
 
   /* ---------- 回答一覧・投票 ---------- */
   .ans-list { display: flex; flex-direction: column; gap: 10px; }
@@ -276,14 +253,6 @@
       <div class="chips" id="catChips"></div>
     </label>
 
-    <div class="toggle" id="missionToggle">
-      <div class="tt">
-        <b>個人ミッション</b>
-        <span>全員に秘密の裏目標が配られます。会話が転がるので初対面が混ざる会ほど効きます</span>
-      </div>
-      <div class="sw"></div>
-    </div>
-
     <div class="spacer"></div>
     <p id="lobbyHint" style="text-align:center"></p>
     <button class="btn" id="startBtn">このメンバーでスタート</button>
@@ -294,10 +263,6 @@
     <div class="topic-card">
       <div class="lb">あなたのお題</div>
       <div class="topic" id="myTopic"></div>
-      <div class="mission-box" id="myMissionBox" hidden>
-        <div class="ml">MISSION</div>
-        <div class="mv" id="myMission"></div>
-      </div>
     </div>
 
     <div id="answerForm">
@@ -315,6 +280,7 @@
         <div class="cap">が回答済み</div>
       </div>
       <div class="roster" id="answerRoster"></div>
+      <button class="btn ghost" id="dropAnswer" hidden></button>
     </div>
 
     <div class="spacer"></div>
@@ -334,6 +300,8 @@
       <div class="cap">が選択済み</div>
     </div>
 
+    <button class="btn ghost" id="dropReview" hidden></button>
+
     <div class="spacer"></div>
     <div class="rule-note">全員が選び終わると自動で集計されます。それまでは選び直せます。</div>
   </section>
@@ -352,8 +320,6 @@
 
     <h2 style="margin-top:6px">全員の回答と投票</h2>
     <div class="ans-list" id="resultList"></div>
-
-    <div class="rule-note" id="resultMission" hidden></div>
 
     <div class="spacer"></div>
     <button class="btn" id="nextRound">次のラウンドへ</button>

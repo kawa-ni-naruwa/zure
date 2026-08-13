@@ -155,8 +155,6 @@ function renderLobby() {
       CAT_LABELS[k] + '</button>'
   ).join('');
 
-  $('missionToggle').classList.toggle('on', !!state.missions);
-
   const enough = ps.length >= state.minPlayers;
   $('startBtn').disabled = !enough;
   $('lobbyHint').textContent = enough
@@ -172,20 +170,17 @@ function renderAnswer() {
   // 途中から参加した人は次のラウンドを待つ
   if (mine && !mine.inRound) {
     $('myTopic').textContent = '次のラウンドから参加します';
-    $('myMissionBox').hidden = true;
     $('answerForm').hidden = true;
     $('answerSend').hidden = true;
     $('answerEdit').hidden = true;
     $('answerDone').hidden = false;
     $('ansProgress').textContent = state.answeredCount + ' / ' + state.rosterCount;
     renderRoster($('answerRoster'), 'answered', '回答済み');
+    paintDropButton($('dropAnswer'), 'answered');
     return;
   }
 
   $('myTopic').textContent = state.yourTopic || '';
-  $('myMissionBox').hidden = !state.yourMission;
-  if (state.yourMission) $('myMission').textContent = state.yourMission;
-
   const answered = state.yourAnswer != null;
   $('answerForm').hidden = answered;
   $('answerSend').hidden = answered;
@@ -195,7 +190,19 @@ function renderAnswer() {
   if (answered) {
     $('ansProgress').textContent = state.answeredCount + ' / ' + state.rosterCount;
     renderRoster($('answerRoster'), 'answered', '回答済み');
+    paintDropButton($('dropAnswer'), 'answered');
   }
+}
+
+/** 切断したまま戻らない人のせいで進行が止まっていないか調べ、
+    止まっていれば「待たずに進む」ボタンを出す。
+    電池切れや誤ってタブを閉じた人がいると、放っておくと永久に進まない。 */
+function paintDropButton(btn, flag) {
+  const stuck = state.players.filter((p) => p.inRound && !p.connected && !p[flag]);
+  if (!stuck.length) { btn.hidden = true; return; }
+  btn.hidden = false;
+  btn.textContent = '切断中の ' + stuck.map((p) => p.name).join('、') + ' を待たずに進む';
+  btn.onclick = () => stuck.forEach((p) => send({ t: 'drop', target: p.pid }));
 }
 
 function renderRoster(host, flag, doneLabel) {
@@ -234,6 +241,7 @@ function renderReview() {
   }).join('');
 
   $('voteProgress').textContent = state.votedCount + ' / ' + state.answers.length;
+  paintDropButton($('dropReview'), 'voted');
 }
 
 /* ---------- 結果 ---------- */
@@ -286,15 +294,6 @@ function renderResult() {
     '</div>';
   }).join('');
 
-  if (state.yourMission) {
-    $('resultMission').hidden = false;
-    $('resultMission').innerHTML =
-      'あなたのミッションは <b>' + esc(state.yourMission) + '</b><br>' +
-      '順番に読み上げて、達成できたか申告しましょう。';
-  } else {
-    $('resultMission').hidden = true;
-  }
-
   // 殺害された本人にだけ、1ラウンドにつき1回だけ演出を出す
   if (state.youAreKilled && killShown !== state.round) {
     killShown = state.round;
@@ -344,10 +343,6 @@ $('barLeave').addEventListener('click', () => {
 $('catChips').addEventListener('click', (e) => {
   const b = e.target.closest('[data-cat]');
   if (b) send({ t: 'config', cat: b.dataset.cat });
-});
-
-$('missionToggle').addEventListener('click', () => {
-  send({ t: 'config', missions: !state.missions });
 });
 
 $('startBtn').addEventListener('click', () => send({ t: 'start' }));

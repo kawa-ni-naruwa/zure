@@ -1,4 +1,4 @@
-import { TOPIC_SETS, MISSIONS } from './topics.js';
+import { TOPIC_SETS } from './topics.js';
 
 /* =========================================================================
    入口。/ws だけを部屋（Durable Object）に回し、それ以外は public/ を返す。
@@ -41,8 +41,7 @@ function newGame() {
     phase: 'lobby',       // lobby | answer | review | result
     round: 0,
     cat: 'nomi',
-    missions: true,
-    players: [],          // { pid, name, answer, vote, mission }
+    players: [],          // { pid, name, answer, vote }
     roundPlayers: [],     // このラウンドに参加している pid（途中参加者は次から）
     wolfPid: null,
     major: null,
@@ -87,11 +86,9 @@ function startRound(g) {
   g.roundPlayers = g.players.map((p) => p.pid);
   g.wolfPid = pick(g.roundPlayers);
 
-  const missions = MISSIONS.slice().sort(() => Math.random() - 0.5);
-  g.players.forEach((p, i) => {
+  g.players.forEach((p) => {
     p.answer = null;
     p.vote = null;
-    p.mission = g.missions ? missions[i % missions.length] : null;
   });
 
   g.round++;
@@ -102,6 +99,22 @@ function startRound(g) {
 
 function inRound(g) {
   return g.players.filter((p) => g.roundPlayers.indexOf(p.pid) >= 0);
+}
+
+/** 全員そろったら次のフェーズへ送る。
+    回答・投票だけでなく、人が抜けたあとにも必ず通すこと。
+    通し忘れると「抜けた人を待ち続けて永久に進まない」状態になる。 */
+function maybeAdvance(g) {
+  const roster = inRound(g);
+  if (roster.length === 0) return;
+
+  if (g.phase === 'answer' && roster.every((p) => p.answer != null)) {
+    g.phase = 'review';
+  }
+  if (g.phase === 'review' && roster.every((p) => p.vote != null)) {
+    g.result = computeResult(g);
+    g.phase = 'result';
+  }
 }
 
 /** 投票の集計と、少数派による殺害の判定。 */
@@ -197,7 +210,6 @@ export class Room {
       phase: g.phase,
       round: g.round,
       cat: g.cat,
-      missions: g.missions,
       you: pid,
       joined: !!me,
       minPlayers: MIN_PLAYERS,
@@ -217,7 +229,6 @@ export class Room {
 
     if (g.phase === 'answer' || g.phase === 'review') {
       view.yourTopic = playing ? (pid === g.wolfPid ? g.minor : g.major) : null;
-      view.yourMission = playing ? me.mission : null;
       view.yourAnswer = playing ? me.answer : null;
       view.answeredCount = roster.filter((p) => p.answer != null).length;
       view.rosterCount = roster.length;
@@ -236,7 +247,6 @@ export class Room {
       view.major = g.major;
       view.minor = g.minor;
       view.wolfPid = g.wolfPid;
-      view.yourMission = me ? me.mission : null;
       view.result = g.result;
       view.youAreKilled = !!(g.result && g.result.killed === pid);
     }
@@ -262,7 +272,7 @@ export class Room {
         if (existing) {
           existing.name = name;                       // 再接続。席はそのまま
         } else {
-          g.players.push({ pid, name, answer: null, vote: null, mission: null });
+          g.players.push({ pid, name, answer: null, vote: null });
           // ラウンド中に来た人は、今のラウンドには入れず次から参加する
         }
         break;
@@ -277,7 +287,6 @@ export class Room {
       case 'config': {
         if (g.phase !== 'lobby') break;
         if (m.cat && TOPIC_SETS[m.cat]) g.cat = m.cat;
-        if (typeof m.missions === 'boolean') g.missions = m.missions;
         break;
       }
 
@@ -293,7 +302,7 @@ export class Room {
         if (!p || g.roundPlayers.indexOf(pid) < 0) break;
         p.answer = clean(m.text, ANSWER_MAX);
         if (!p.answer) { p.answer = null; break; }
-        if (inRound(g).every((x) => x.answer != null)) g.phase = 'review';
+        maybeAdvance(g);
         break;
       }
 
@@ -311,10 +320,7 @@ export class Room {
         if (m.target === pid) break;                          // 自分には投票できない
         if (g.roundPlayers.indexOf(m.target) < 0) break;
         p.vote = m.target;
-        if (inRound(g).every((x) => x.vote != null)) {
-          g.result = computeResult(g);
-          g.phase = 'result';
-        }
+        maybeAdvance(g);
         break;
       }
 
@@ -338,13 +344,25 @@ export class Room {
         g.wolfPid = null;
         g.major = null;
         g.minor = null;
-        g.players.forEach((p) => { p.answer = null; p.vote = null; p.mission = null; });
+        g.players.forEach((p) => { p.answer = null; p.vote = null; });
         break;
       }
 
       case 'leave': {
         g.players = g.players.filter((p) => p.pid !== pid);
         g.roundPlayers = g.roundPlayers.filter((x) => x !== pid);
+        maybeAdvance(g);
+        break;
+      }
+
+      // 切断したまま戻らない人を外す。誰でも実行できるが、
+      // 今つながっている人は外せないので、勝手に追い出すことはできない。
+      case 'drop': {
+        const target = clean(m.target, 64);
+        if (this.connectedPids().has(target)) break;
+        g.players = g.players.filter((p) => p.pid !== target);
+        g.roundPlayers = g.roundPlayers.filter((x) => x !== target);
+        maybeAdvance(g);
         break;
       }
 

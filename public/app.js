@@ -28,6 +28,8 @@ let retry = 0;
 let wantConnected = false;  // 参加中か。退出したら false にして自動再接続を止める
 let killShown = -1;   // ドクロ演出を出したラウンド。同じラウンドで二度出さない
 let inputRound = -1;  // 入力欄を空にしたラウンド。前の回答を持ち越さないため
+let lastPhase = null; // 直前に描いたフェーズ。切り替わりを検知してカウントダウンを出す
+let counting = false; // カウントダウン中は画面を描き替えない
 
 /* ---------- 保存 ---------- */
 
@@ -98,6 +100,27 @@ function setNet(ok) {
   $('netDot').classList.toggle('off', !ok);
 }
 
+/* カウントダウンの合図。iOSは vibrate が効かないので WebAudio で鳴らす。
+   音が出せない環境でも進行を止めないよう、失敗は握りつぶす。 */
+let audioCtx = null;
+function beep(freq, ms) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.22, audioCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + ms / 1000);
+    o.connect(g).connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + ms / 1000 + 0.02);
+  } catch (e) { /* 音が出せなくても進行は止めない */ }
+  try { if (navigator.vibrate) navigator.vibrate(90); } catch (e) {}
+}
+
 /* ---------- 画面切り替え ---------- */
 
 function show(id) {
@@ -131,14 +154,76 @@ function render() {
     '<b>' + esc(me.room) + '</b> · ' + (CAT_LABELS[state.cat] || '') +
     (state.round > 0 ? ' · R' + state.round : '');
 
-  if (!state.joined) { show('join'); return; }
+  if (!state.joined) { show('join'); lastPhase = null; return; }
 
+  const prev = lastPhase;
+  lastPhase = state.phase;
+
+  // カウントダウン中に届いた状態は溜めておき、終わってからまとめて描く
+  if (counting) return;
+
+  // 回答が出そろった／全員が選び終わった瞬間だけ 3・2・1 をはさむ
+  if ((prev === 'answer' && state.phase === 'review') ||
+      (prev === 'review' && state.phase === 'result')) {
+    runCountdown(state.phase === 'review' ? 'みんなの回答が出そろいました' : '全員が選び終わりました');
+    return;
+  }
+
+  paintPhase();
+}
+
+function paintPhase() {
   switch (state.phase) {
     case 'lobby':  renderLobby();  show('lobby');  break;
     case 'answer': renderAnswer(); show('answer'); break;
     case 'review': renderReview(); show('review'); break;
     case 'result': renderResult(); show('result'); break;
   }
+}
+
+/** 3・2・1 を出してから次の画面へ。
+    サーバーで待たせるとアラーム待ちで止まる事故が起きるので、
+    各端末が受信直後に数える。ズレても0.5秒程度。 */
+function runCountdown(caption) {
+  counting = true;
+  const box = $('countdown');
+  const num = $('cdNum');
+  $('cdCap').textContent = caption;
+  box.hidden = false;
+
+  let n = 3;
+  let timer = null;
+  let guard = null;
+
+  // ここで例外が漏れると counting が立ったまま画面が固まる。
+  // 実際に一度それでゲームが止まったので、二重に保険をかけてある。
+  const finish = () => {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (guard) { clearTimeout(guard); guard = null; }
+    box.hidden = true;
+    counting = false;
+    try { paintPhase(); } catch (e) {}   // 溜まっていた最新の状態で描く
+  };
+
+  const tick = () => {
+    try {
+      num.textContent = n;
+      num.classList.remove('tick');
+      void num.offsetWidth;              // アニメーションを毎回やり直させる
+      num.classList.add('tick');
+      beep(n === 1 ? 990 : 660, 110);
+    } catch (e) {}
+  };
+
+  tick();
+  timer = setInterval(() => {
+    n--;
+    if (n <= 0) { finish(); return; }
+    tick();
+  }, 1000);
+
+  // タイマーが動かない環境でも必ず抜ける
+  guard = setTimeout(finish, 5000);
 }
 
 /* ---------- ロビー ---------- */
@@ -183,7 +268,8 @@ function renderAnswer() {
 
   // 途中から参加した人は次のラウンドを待つ
   if (mine && !mine.inRound) {
-    $('myTopic').textContent = '次のラウンドから参加します';
+    $('myWords').innerHTML = '<div class="word">次のラウンドから参加します</div>';
+    $('oddNote').hidden = true;
     $('answerForm').hidden = true;
     $('answerSend').hidden = true;
     $('answerEdit').hidden = true;
@@ -194,7 +280,9 @@ function renderAnswer() {
     return;
   }
 
-  $('myTopic').textContent = state.yourTopic || '';
+  $('myWords').innerHTML = (state.words || [])
+    .map((w) => '<div class="word">' + esc(w) + '</div>').join('');
+  $('oddNote').hidden = !state.youAreOdd;
 
   const answered = state.yourAnswer != null;
   $('answerForm').hidden = answered;
@@ -238,7 +326,8 @@ function renderReview() {
 
   // 選び方の案内は上段の .notice に出しているので、ここはお題の確認だけ
   $('reviewHint').innerHTML = playing
-    ? 'あなたのお題は「<b style="color:var(--text)">' + esc(state.yourTopic) + '</b>」でした。'
+    ? 'あなたのキーワードは <span class="words-inline">' +
+      (state.words || []).map(esc).join('<span class="sep">/</span>') + '</span> でした。'
     : 'あなたは次のラウンドから参加します。このラウンドは見ているだけです。';
 
   // 並びは回答が届いた順。この順に質問していくので番号を振る
@@ -273,8 +362,12 @@ function renderResult() {
   $('verdictLabel').textContent = majorWon ? '異端を当てた' : '異端が逃げ切った';
   $('verdictBig').textContent = majorWon ? '多数派の勝ち' : '異端の勝ち';
 
-  $('revMaj').textContent = state.major;
-  $('revMin').textContent = state.minor;
+  // 違う1語だけ色を変えて出す
+  const wordRow = (words) => words
+    .map((w, i) => '<span' + (i === state.oddIndex ? ' class="diff"' : '') + '>' + esc(w) + '</span>')
+    .join('');
+  $('revMaj').innerHTML = wordRow(state.majorWords || []);
+  $('revMin').innerHTML = wordRow(state.oddWords || []);
 
   // 殺害
   if (r.killed) {

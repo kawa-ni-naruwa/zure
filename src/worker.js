@@ -38,7 +38,7 @@ const ANSWER_MAX = 40;
 
 // 保存してある状態の形。増やしたら上げること。
 // 古い形のまま読み込むと、途中のラウンドが進まなくなる事故が起きる。
-const STATE_VERSION = 4;
+const STATE_VERSION = 5;
 
 function newGame() {
   return {
@@ -49,9 +49,10 @@ function newGame() {
     players: [],          // { pid, name, answer, vote, order }
     answerSeq: 0,         // 回答が届いた順番。一覧はこの順に並べる
     roundPlayers: [],     // このラウンドに参加している pid（途中参加者は次から）
-    wolfPid: null,        // 「異端」の pid（1人だけお題が違う人）
-    major: null,
-    minor: null,
+    wolfPid: null,        // 「異端」の pid（3語のうち1語だけ違う人）
+    words: null,          // 多数派に配る3語
+    oddIndex: null,       // 異端だけ差し替わる位置
+    oddWord: null,        // 異端に配られる差し替え語
     used: {},             // ジャンルごとの出題済みindex。部屋内でお題が重複しないように
     result: null,
   };
@@ -60,6 +61,29 @@ function newGame() {
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** その人に見せる3語。異端だけ1語が差し替わる。 */
+function wordsFor(g, pid) {
+  const w = g.words.slice();
+  if (pid === g.wolfPid) w[g.oddIndex] = g.oddWord;
+  return w;
+}
+
+/** 異端に配られる3語（結果画面の開示用） */
+function oddWords(g) {
+  const w = g.words.slice();
+  w[g.oddIndex] = g.oddWord;
+  return w;
 }
 
 function clean(s, max) {
@@ -78,17 +102,24 @@ function drawTopic(g) {
   const idx = pick(remaining);
   g.used[g.cat] = used.concat([idx]);
 
-  const pair = pool[idx];
-  const flip = Math.random() < 0.5;   // どちらを多数派にするかは毎回入れ替える
-  return { major: flip ? pair.b : pair.a, minor: flip ? pair.a : pair.b };
+  // 表示順をシャッフルする。差し替わる語がいつも同じ位置に来ると
+  // 「3つ目を疑えばいい」と学習されてしまう
+  const t = pool[idx];
+  const order = shuffled([0, 1, 2]);
+  return {
+    words: order.map((k) => t.w[k]),
+    oddIndex: order.indexOf(t.i),
+    oddWord: t.o,
+  };
 }
 
 function startRound(g) {
   if (g.players.length < MIN_PLAYERS) return false;
 
   const t = drawTopic(g);
-  g.major = t.major;
-  g.minor = t.minor;
+  g.words = t.words;
+  g.oddIndex = t.oddIndex;
+  g.oddWord = t.oddWord;
 
   g.roundPlayers = g.players.map((p) => p.pid);
   g.wolfPid = pick(g.roundPlayers);
@@ -247,8 +278,9 @@ export class Room {
     const playing = !!me && g.roundPlayers.indexOf(pid) >= 0;
 
     if (g.phase === 'answer' || g.phase === 'review') {
-      // 自分が異端かどうかは伝えない。お題が違うことに本人も気づかない
-      view.yourTopic = playing ? (pid === g.wolfPid ? g.minor : g.major) : null;
+      // 異端であることは本人に伝える。ただし3語のどれが違うかは伝えない
+      view.words = playing ? wordsFor(g, pid) : null;
+      view.youAreOdd = playing && pid === g.wolfPid;
       view.yourAnswer = playing ? me.answer : null;
       view.answeredCount = roster.filter((p) => p.answer != null).length;
       view.rosterCount = roster.length;
@@ -266,8 +298,9 @@ export class Room {
       view.answers = inAnswerOrder(g).map((p) => ({
         pid: p.pid, name: p.name, answer: p.answer, vote: p.vote,
       }));
-      view.major = g.major;
-      view.minor = g.minor;
+      view.majorWords = g.words;
+      view.oddWords = oddWords(g);
+      view.oddIndex = g.oddIndex;
       view.wolfPid = g.wolfPid;
       view.result = g.result;
       view.youAreKilled = !!(g.result && g.result.killed === pid);
@@ -368,8 +401,9 @@ export class Room {
         g.roundPlayers = [];
         g.result = null;
         g.wolfPid = null;
-        g.major = null;
-        g.minor = null;
+        g.words = null;
+        g.oddIndex = null;
+        g.oddWord = null;
         g.players.forEach((p) => { p.answer = null; p.vote = null; });
         break;
       }

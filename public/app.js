@@ -419,8 +419,11 @@ function boot() {
   const h = decodeURIComponent(location.hash.replace(/^#/, ''));
   if (h) me.room = normRoom(h);
 
-  $('nameInput').value = me.name;
-  $('nameCount').textContent = me.name.length;
+  // 名前は入力欄に復元しない。前に使った名前が入っていると
+  // 「なまえ」の例文なのか自分が入れた値なのか見分けがつかないし、
+  // スマホを人に渡したときに前の人の名前が出てしまう。
+  $('nameInput').value = '';
+  $('nameCount').textContent = '0';
   $('roomInput').value = me.room || ROOM_WORDS[Math.floor(Math.random() * ROOM_WORDS.length)];
 
   show('join');

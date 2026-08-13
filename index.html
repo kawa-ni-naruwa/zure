@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12131a">
+<title>1人だけ、ちがう。</title>
+<meta name="description" content="スマホだけで遊べる会話ゲーム。1人だけお題が違う。それが誰かを当てよう。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕵️</text></svg>">
+<style>
+  :root {
+    --bg: #12131a;
+    --surface: #1c1e2b;
+    --surface-2: #262939;
+    --line: #333749;
+    --text: #f2f3f7;
+    --muted: #8b90a5;
+    --accent: #ffb454;
+    --accent-ink: #2a1d05;
+    --danger: #ff6b6b;
+    --ok: #5fd6a4;
+    --pad: 20px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  body {
+    min-height: 100svh;
+    display: flex;
+    justify-content: center;
+  }
+
+  #app {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+
+  /* ---------- 共通パーツ ---------- */
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px var(--pad);
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    min-height: 46px;
+  }
+  .bar .grow { flex: 1; }
+  .bar b { color: var(--text); font-weight: 600; }
+  .bar button {
+    background: none; border: none; color: var(--muted);
+    font-size: 13px; padding: 6px; cursor: pointer; font-family: inherit;
+  }
+
+  .screen {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    padding: var(--pad);
+    gap: 16px;
+    animation: fade .18s ease;
+  }
+  .screen.on { display: flex; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+
+  .spacer { flex: 1; }
+
+  /* 日本語を文節で折り返す（対応ブラウザのみ。非対応でも無視されるだけ） */
+  h1, h2, p, #topicText, .mission-box .mv, .reveal-row .rv, .rule-note, .step .s {
+    word-break: auto-phrase;
+  }
+
+  h1 {
+    font-size: 30px; line-height: 1.25; margin: 0; letter-spacing: -0.02em;
+  }
+  h2 { font-size: 20px; margin: 0; line-height: 1.35; }
+  p  { margin: 0; line-height: 1.7; color: var(--muted); font-size: 14px; }
+  .lead { color: var(--text); font-size: 15px; }
+
+  button.btn {
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    padding: 18px;
+    border-radius: 14px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-ink);
+    width: 100%;
+    cursor: pointer;
+    transition: transform .08s;
+  }
+  button.btn:active { transform: scale(.98); }
+  button.btn.sub {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  button.btn.ghost {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 14px;
+  }
+  button.btn:disabled { opacity: .4; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px;
+  }
+
+  label.field { display: block; }
+  label.field > span {
+    display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; font-weight: 600;
+  }
+
+  input[type=text] {
+    width: 100%;
+    font-family: inherit;
+    font-size: 22px;
+    font-weight: 600;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text);
+    text-align: center;
+    letter-spacing: .08em;
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+  /* 選択チップ */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-family: inherit;
+    font-size: 15px;
+    padding: 12px 0;
+    flex: 1 0 calc(20% - 8px);
+    min-width: 52px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .chips.wide .chip { flex: 1 0 auto; padding: 12px 18px; }
+
+  /* トグル */
+  .toggle {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px; cursor: pointer;
+  }
+  .toggle .tt { flex: 1; }
+  .toggle .tt b { display: block; font-size: 15px; margin-bottom: 3px; }
+  .toggle .tt span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .toggle .sw {
+    width: 48px; height: 29px; border-radius: 15px; background: var(--surface-2);
+    position: relative; transition: background .15s; flex: none;
+  }
+  .toggle .sw::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 23px; height: 23px; border-radius: 50%; background: var(--muted);
+    transition: transform .15s, background .15s;
+  }
+  .toggle.on .sw { background: var(--accent); }
+  .toggle.on .sw::after { transform: translateX(19px); background: #fff; }
+
+  /* ---------- お題カード ---------- */
+
+  #cardFace {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    min-height: 240px;
+  }
+  #cardFace.hidden-state { background: repeating-linear-gradient(45deg, #1c1e2b, #1c1e2b 12px, #20222f 12px, #20222f 24px); }
+  #cardFace .eye { font-size: 44px; }
+  #cardFace .tap { font-size: 15px; color: var(--muted); font-weight: 600; }
+  #topicText {
+    font-size: 26px; font-weight: 700; line-height: 1.45; letter-spacing: -0.01em;
+  }
+  #cardFace .warn { font-size: 12px; color: var(--muted); }
+  .mission-box {
+    border-top: 1px dashed var(--line);
+    padding-top: 14px; margin-top: 4px; width: 100%;
+  }
+  .mission-box .ml { font-size: 11px; color: var(--accent); font-weight: 700; letter-spacing: .1em; margin-bottom: 6px; }
+  .mission-box .mv { font-size: 16px; font-weight: 600; line-height: 1.5; }
+
+  /* ---------- 発言順 ---------- */
+
+  /* 発言順は横に流す。10人以上でも1画面に収めるため */
+  .order-flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .ochip {
+    width: 46px; height: 46px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--line);
+    color: var(--muted); font-weight: 700; font-size: 17px;
+    position: relative;
+  }
+  .ochip.done { opacity: .4; }
+  .ochip.me { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .ochip.now { box-shadow: 0 0 0 2px var(--accent); color: var(--text); }
+  .ochip.now.me { color: var(--accent-ink); }
+  .you-are { font-size: 14px; color: var(--muted); }
+  .you-are b { color: var(--accent); font-size: 17px; }
+
+  /* ラウンド調整（上部バー） */
+  .round-ctl { display: flex; align-items: center; gap: 2px; }
+  .round-ctl b { min-width: 26px; text-align: center; font-size: 13px; }
+  .round-ctl button { font-size: 17px; padding: 4px 8px; line-height: 1; }
+
+  /* 発言タイマー */
+  .speak-panel { display: flex; flex-direction: column; gap: 10px; }
+  .speak-box {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px; text-align: center; cursor: pointer;
+  }
+  .speak-box .who { font-size: 13px; color: var(--accent); font-weight: 700; margin-bottom: 2px; }
+  .speak-box .val {
+    font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; line-height: 1.1;
+  }
+  .speak-box .val.warn { color: var(--danger); }
+  .speak-box .cap { font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+
+  /* ---------- タイマー ---------- */
+
+  .timer {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; padding: 26px 0;
+  }
+  .timer .val {
+    font-size: 68px; font-weight: 700; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em; line-height: 1;
+  }
+  .timer .val.warn { color: var(--danger); }
+  .timer .cap { font-size: 13px; color: var(--muted); font-weight: 600; }
+
+  /* ---------- 結果 ---------- */
+
+  .verdict {
+    text-align: center; padding: 26px 18px; border-radius: 18px;
+  }
+  .verdict .label { font-size: 13px; font-weight: 700; letter-spacing: .12em; opacity: .75; }
+  .verdict .big { font-size: 34px; font-weight: 800; margin-top: 6px; letter-spacing: -0.02em; }
+  .verdict.min { background: linear-gradient(160deg, #ff6b6b, #d94a63); color: #fff; }
+  .verdict.maj { background: linear-gradient(160deg, #4fb3ff, #3d7bd9); color: #fff; }
+
+  .reveal-row {
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 13px 16px; border-radius: 12px; background: var(--surface);
+    border: 1px solid var(--line);
+  }
+  .reveal-row .rl { font-size: 11.5px; color: var(--muted); font-weight: 700; letter-spacing: .06em; }
+  .reveal-row .rv { font-size: 16px; font-weight: 600; line-height: 1.5; }
+
+  .rule-note {
+    background: var(--surface-2); border-radius: 12px; padding: 14px 16px;
+    font-size: 13.5px; line-height: 1.65; color: var(--muted);
+  }
+  .rule-note b { color: var(--accent); }
+
+  .steps { display: flex; flex-direction: column; gap: 10px; }
+  .step { display: flex; gap: 12px; align-items: flex-start; }
+  .step .n {
+    flex: none; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--surface-2); color: var(--accent);
+    font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; margin-top: 1px;
+  }
+  .step .s { font-size: 14px; line-height: 1.6; color: var(--muted); }
+  .step .s b { color: var(--text); font-weight: 600; }
+
+  .copied { color: var(--ok) !important; }
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <!-- 上部バー（部屋に入ってから表示） -->
+  <div class="bar" id="topbar" hidden>
+    <span id="barInfo"></span>
+    <span class="grow"></span>
+    <span class="round-ctl">
+      <button id="roundDown" aria-label="ラウンドを戻す">−</button>
+      <b id="barRound">R1</b>
+      <button id="roundUp" aria-label="ラウンドを進める">＋</button>
+    </span>
+    <button id="barLeave">退出</button>
+  </div>
+
+  <!-- ============ ホーム ============ -->
+  <section class="screen on" id="s-home">
+    <div class="spacer"></div>
+    <div>
+      <h1>1人だけ、<br>ちがう。</h1>
+      <p style="margin-top:14px">全員のスマホにお題が出ます。<br>でも1人だけ、少しだけ違うお題です。<br>話して、探して、当ててください。</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="steps card">
+      <div class="step"><div class="n">1</div><div class="s"><b>お題を見る</b>／自分だけの問いが出る</div></div>
+      <div class="step"><div class="n">2</div><div class="s"><b>1周する</b>／1人20秒で口頭で答える</div></div>
+      <div class="step"><div class="n">3</div><div class="s"><b>質問する</b>／怪しい人を問い詰める</div></div>
+      <div class="step"><div class="n">4</div><div class="s"><b>せーので指差し</b>／多数決で1人選ぶ</div></div>
+    </div>
+    <button class="btn" id="goSetup">部屋をつくる</button>
+    <button class="btn sub" id="goJoin">部屋に入る</button>
+  </section>
+
+  <!-- ============ 部屋をつくる ============ -->
+  <section class="screen" id="s-setup">
+    <h2>部屋をつくる</h2>
+
+    <label class="field">
+      <span>あいことば</span>
+      <input type="text" id="setupCode" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </label>
+    <button class="btn ghost" id="regen">別のあいことばにする</button>
+
+    <label class="field">
+      <span>人数</span>
+      <div class="chips" id="setupN"></div>
+    </label>
+
+    <label class="field">
+      <span>お題のジャンル</span>
+      <div class="chips wide" id="setupCat"></div>
+    </label>
+
+    <div class="toggle" id="setupMission">
+      <div class="tt">
+        <b>個人ミッション</b>
+        <span>全員に秘密の裏目標が配られます。会話がぐちゃぐちゃになって面白いです</span>
+      </div>
+      <div class="sw"></div>
+    </div>
+
+    <div class="spacer"></div>
+    <button class="btn sub" id="copyLink">招待リンクをコピー</button>
+    <p style="text-align:center;font-size:12.5px">リンクを配れないときは、この設定を<br>全員に口で伝えて「部屋に入る」から同じ設定にしてください</p>
+    <button class="btn" id="setupStart">はじめる</button>
+  </section>
+
+  <!-- ============ 部屋に入る ============ -->
+  <section class="screen" id="s-join">
+    <h2>部屋に入る</h2>
+    <p>ホストと<b style="color:var(--text)">まったく同じ設定</b>にしてください。1つでも違うとお題がズレます。</p>
+
+    <label class="field">
+      <span>あいことば</span>
+      <input type="text" id="joinCode" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="うみがめ">
+    </label>
+
+    <label class="field">
+      <span>人数</span>
+      <div class="chips" id="joinN"></div>
+    </label>
+
+    <label class="field">
+      <span>お題のジャンル</span>
+      <div class="chips wide" id="joinCat"></div>
+    </label>
+
+    <div class="toggle" id="joinMission">
+      <div class="tt">
+        <b>個人ミッション</b>
+        <span>ホストがONにしていたらONに</span>
+      </div>
+      <div class="sw"></div>
+    </div>
+
+    <div class="spacer"></div>
+    <button class="btn" id="joinGo">次へ</button>
+    <button class="btn ghost" id="joinBack">もどる</button>
+  </section>
+
+  <!-- ============ 番号えらび ============ -->
+  <section class="screen" id="s-seat">
+    <h2>自分の番号をえらぶ</h2>
+    <p>他の人とかぶらないように、声に出して決めてください。<br>「1番いきます」「じゃあ2番」の要領で。</p>
+    <div class="chips" id="seatGrid"></div>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="seatBack">設定を変える</button>
+  </section>
+
+  <!-- ============ お題 ============ -->
+  <section class="screen" id="s-card">
+    <div id="cardFace" class="hidden-state">
+      <div class="eye">🤫</div>
+      <div class="tap">タップしてお題を見る</div>
+      <div class="warn">まわりに画面を見られないように</div>
+    </div>
+    <button class="btn" id="cardNext" disabled>見たので次へ</button>
+  </section>
+
+  <!-- ============ 発言順 ============ -->
+  <section class="screen" id="s-order">
+    <h2>発言の順番</h2>
+    <p>この順番で、1人ずつ<b style="color:var(--text)">自分の答えを1つだけ</b>言ってください。理由は言わなくてOK。</p>
+
+    <div class="order-flow" id="orderList"></div>
+    <div class="you-are" id="youAre"></div>
+
+    <div class="speak-panel">
+      <div class="speak-box" id="speakBox">
+        <div class="who" id="speakWho"></div>
+        <div class="val" id="speakVal">0:20</div>
+        <div class="cap" id="speakCap">タップでスタート</div>
+      </div>
+      <button class="btn ghost" id="speakSkip">次の人へ</button>
+      <p style="font-size:12px;text-align:center">20秒タイマーはホストの画面だけで回せば十分です</p>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="rule-note">言うのは<b>答えだけ</b>。お題そのものは絶対に読み上げないこと。</div>
+    <button class="btn" id="orderNext">1周した → 質問タイムへ</button>
+  </section>
+
+  <!-- ============ 質問タイム ============ -->
+  <section class="screen" id="s-talk">
+    <h2>質問タイム</h2>
+    <p>誰にでも質問できます。「それってどういう意味?」「なんでそれを選んだの?」で詰めていきましょう。</p>
+    <div class="timer">
+      <div class="val" id="talkVal">3:00</div>
+      <div class="cap" id="talkCap">タップでスタート</div>
+    </div>
+    <div class="chips wide" id="talkPresets"></div>
+    <div class="spacer"></div>
+    <button class="btn" id="talkNext">投票へ</button>
+  </section>
+
+  <!-- ============ 投票 ============ -->
+  <section class="screen" id="s-vote">
+    <h2>せーの、で指差し</h2>
+    <p>全員で同時に、怪しいと思う人を指差してください。<br>一番多く指された人が1人。同数なら決選投票を。</p>
+    <div class="spacer"></div>
+    <div class="rule-note">
+      指差しが終わったら、<b>全員で同時に</b>下のボタンを押してください。<br>誰が少数派だったかが、それぞれの画面に出ます。
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="voteReveal">正解を見る</button>
+    <button class="btn ghost" id="voteBack">質問タイムに戻る</button>
+  </section>
+
+  <!-- ============ 結果 ============ -->
+  <section class="screen" id="s-reveal">
+    <div class="verdict" id="verdict">
+      <div class="label" id="verdictLabel"></div>
+      <div class="big" id="verdictBig"></div>
+    </div>
+
+    <div class="reveal-row"><div class="rl">少数派</div><div class="rv" id="revWolf"></div></div>
+    <div class="reveal-row"><div class="rl">多数派のお題</div><div class="rv" id="revMaj"></div></div>
+    <div class="reveal-row"><div class="rl">少数派のお題</div><div class="rv" id="revMin"></div></div>
+
+    <div class="rule-note" id="revRule">
+      指差しで選ばれたのが<b>少数派だったら</b> → そこから逆転チャンス。少数派は<b>多数派のお題を口で当てられたら勝ち</b>。<br>
+      選ばれたのが多数派だったら → <b>少数派の勝ち</b>。
+    </div>
+
+    <div class="rule-note" id="revMission" hidden></div>
+
+    <div class="spacer"></div>
+    <button class="btn" id="nextRound">次のラウンドへ</button>
+    <button class="btn ghost" id="revBack">結果を隠す</button>
+  </section>
+
+</div>
+
+<script src="topics.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

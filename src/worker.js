@@ -38,7 +38,7 @@ const ANSWER_MAX = 40;
 
 // 保存してある状態の形。増やしたら上げること。
 // 古い形のまま読み込むと、途中のラウンドが進まなくなる事故が起きる。
-const STATE_VERSION = 3;
+const STATE_VERSION = 4;
 
 function newGame() {
   return {
@@ -52,21 +52,11 @@ function newGame() {
     wolfPid: null,        // 「異端」の pid（1人だけお題が違う人）
     major: null,
     minor: null,
-    fakeTarget: null,     // 異端が書き換えた相手の pid
-    fakeText: null,       // 本人以外に見せる、偽の回答
     used: {},             // ジャンルごとの出題済みindex。部屋内でお題が重複しないように
     result: null,
   };
 }
 
-/** その人の回答が、閲覧者にどう見えるか。
-    書き換えられていても、本人にだけは自分が入力した内容が見える。
-    ここを間違えると本人にバレるので、回答を出す経路は必ずこれを通すこと。 */
-function answerShownTo(g, p, viewerPid) {
-  if (p.pid === viewerPid) return p.answer;
-  if (p.pid === g.fakeTarget) return g.fakeText;
-  return p.answer;
-}
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -102,8 +92,6 @@ function startRound(g) {
 
   g.roundPlayers = g.players.map((p) => p.pid);
   g.wolfPid = pick(g.roundPlayers);
-  g.fakeTarget = null;
-  g.fakeText = null;
 
   g.answerSeq = 0;
   g.players.forEach((p) => {
@@ -135,12 +123,8 @@ function maybeAdvance(g) {
   const roster = inRound(g);
   if (roster.length === 0) return;
 
-  if (g.phase === 'answer') {
-    const allAnswered = roster.every((p) => p.answer != null);
-    // 異端が居る限り、書き換えも済んでいないと先に進めない（書き換えは必須）
-    const oddInRound = g.roundPlayers.indexOf(g.wolfPid) >= 0;
-    const rewriteDone = !oddInRound || (g.fakeTarget && g.fakeText);
-    if (allAnswered && rewriteDone) g.phase = 'review';
+  if (g.phase === 'answer' && roster.every((p) => p.answer != null)) {
+    g.phase = 'review';
   }
   if (g.phase === 'review' && roster.every((p) => p.vote != null)) {
     g.result = computeResult(g);
@@ -262,25 +246,17 @@ export class Room {
     // 渡してしまうと多数派のお題が場外に漏れる。
     const playing = !!me && g.roundPlayers.indexOf(pid) >= 0;
 
-    // 異端であることは本人にだけ伝える（書き換え欄を出すために必要）
-    const iAmOdd = playing && pid === g.wolfPid;
-
     if (g.phase === 'answer' || g.phase === 'review') {
-      view.yourTopic = playing ? (iAmOdd ? g.minor : g.major) : null;
+      // 自分が異端かどうかは伝えない。お題が違うことに本人も気づかない
+      view.yourTopic = playing ? (pid === g.wolfPid ? g.minor : g.major) : null;
       view.yourAnswer = playing ? me.answer : null;
       view.answeredCount = roster.filter((p) => p.answer != null).length;
       view.rosterCount = roster.length;
-      view.youAreOdd = iAmOdd;
-      if (iAmOdd) {
-        view.yourFakeTarget = g.fakeTarget;
-        view.yourFakeText = g.fakeText;
-      }
     }
 
     if (g.phase === 'review') {
-      // 書き換えられた人には本人の入力を、それ以外には偽の回答を見せる
       view.answers = inAnswerOrder(g).map((p) => ({
-        pid: p.pid, name: p.name, answer: answerShownTo(g, p, pid),
+        pid: p.pid, name: p.name, answer: p.answer,
       }));
       view.yourVote = playing ? me.vote : null;
       view.votedCount = roster.filter((p) => p.vote != null).length;
@@ -288,10 +264,7 @@ export class Room {
 
     if (g.phase === 'result') {
       view.answers = inAnswerOrder(g).map((p) => ({
-        pid: p.pid, name: p.name, vote: p.vote,
-        answer: p.answer,                                  // 本人が実際に入力したもの
-        shown: p.pid === g.fakeTarget ? g.fakeText : p.answer,  // みんなが見ていたもの
-        rewritten: p.pid === g.fakeTarget,
+        pid: p.pid, name: p.name, answer: p.answer, vote: p.vote,
       }));
       view.major = g.major;
       view.minor = g.minor;
@@ -353,18 +326,6 @@ export class Room {
         const text = clean(m.text, ANSWER_MAX);
         if (!text) break;
 
-        // 異端は「自分の回答」と「他人の回答の書き換え」をまとめて送る。
-        // 片方でも欠けていたら受け付けない（書き換えは必須のため）
-        if (pid === g.wolfPid) {
-          const target = clean(m.fakeTarget, 64);
-          const fake = clean(m.fakeText, ANSWER_MAX);
-          if (!fake) break;
-          if (!target || target === pid) break;
-          if (g.roundPlayers.indexOf(target) < 0) break;
-          g.fakeTarget = target;
-          g.fakeText = fake;
-        }
-
         p.answer = text;
         p.order = ++g.answerSeq;      // 書き直すと最後尾に回る
         maybeAdvance(g);
@@ -375,7 +336,6 @@ export class Room {
         if (g.phase !== 'answer') break;
         const p = g.players.find((x) => x.pid === pid);
         if (p) { p.answer = null; p.order = null; }
-        if (pid === g.wolfPid) { g.fakeTarget = null; g.fakeText = null; }
         break;
       }
 
@@ -417,7 +377,6 @@ export class Room {
       case 'leave': {
         g.players = g.players.filter((p) => p.pid !== pid);
         g.roundPlayers = g.roundPlayers.filter((x) => x !== pid);
-        if (g.fakeTarget === pid) { g.fakeTarget = null; g.fakeText = null; }
         maybeAdvance(g);
         break;
       }
@@ -429,7 +388,6 @@ export class Room {
         if (this.connectedPids().has(target)) break;
         g.players = g.players.filter((p) => p.pid !== target);
         g.roundPlayers = g.roundPlayers.filter((x) => x !== target);
-        if (g.fakeTarget === target) { g.fakeTarget = null; g.fakeText = null; }
         maybeAdvance(g);
         break;
       }

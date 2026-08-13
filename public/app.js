@@ -25,8 +25,9 @@ const me = {
 let ws = null;
 let state = null;
 let retry = 0;
+let wantConnected = false;  // 参加中か。退出したら false にして自動再接続を止める
 let killShown = -1;   // ドクロ演出を出したラウンド。同じラウンドで二度出さない
-let fakePick = null;  // 異端が書き換える相手。送信するまで手元に置いておく
+let inputRound = -1;  // 入力欄を空にしたラウンド。前の回答を持ち越さないため
 
 /* ---------- 保存 ---------- */
 
@@ -58,6 +59,7 @@ function normRoom(s) {
 /* ---------- 通信 ---------- */
 
 function connect() {
+  wantConnected = true;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(proto + '://' + location.host + '/ws?room=' + encodeURIComponent(me.room));
 
@@ -78,9 +80,11 @@ function connect() {
 
   ws.onclose = () => {
     setNet(false);
-    // 電波が切れても勝手につなぎ直す。パーティ中に手で操作させないため
+    // 電波が切れたときだけつなぎ直す。
+    // 自分で退出した場合はつなぎ直さない（前の部屋に引き戻されるため）
+    if (!wantConnected) return;
     retry++;
-    setTimeout(connect, Math.min(500 * retry, 4000));
+    setTimeout(() => { if (wantConnected) connect(); }, Math.min(500 * retry, 4000));
   };
 
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
@@ -111,8 +115,8 @@ async function keepAwake() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     if (!wakeLock) keepAwake();
-    // 復帰したら念のためつなぎ直す
-    if (ws && ws.readyState !== WebSocket.OPEN) connect();
+    // 復帰したら念のためつなぎ直す（参加中のときだけ）
+    if (wantConnected && ws && ws.readyState !== WebSocket.OPEN) connect();
   }
 });
 
@@ -166,6 +170,15 @@ function renderLobby() {
 /* ---------- 回答 ---------- */
 
 function renderAnswer() {
+  // ラウンドが変わったら入力欄を空にする。
+  // 残っていると前のラウンドの答えをそのまま送ってしまう
+  if (inputRound !== state.round) {
+    inputRound = state.round;
+    $('answerInput').value = '';
+    $('ansCount').textContent = '0';
+    answerErr('');
+  }
+
   const mine = state.players.find((p) => p.pid === state.you);
 
   // 途中から参加した人は次のラウンドを待つ
@@ -182,7 +195,6 @@ function renderAnswer() {
   }
 
   $('myTopic').textContent = state.yourTopic || '';
-  paintOddPanel();
 
   const answered = state.yourAnswer != null;
   $('answerForm').hidden = answered;
@@ -208,23 +220,6 @@ function paintDropButton(btn, flag) {
   btn.onclick = () => stuck.forEach((p) => send({ t: 'drop', target: p.pid }));
 }
 
-/** 異端だけに出る書き換え欄。
-    ほかの人が回答するたび再描画が走るので、
-    選択中の相手と入力中の文字を消さないように気をつける。 */
-function paintOddPanel() {
-  const panel = $('oddPanel');
-  if (!state.youAreOdd) { panel.hidden = true; return; }
-  panel.hidden = false;
-
-  const targets = state.players.filter((p) => p.inRound && p.pid !== state.you);
-  if (fakePick && !targets.some((p) => p.pid === fakePick)) fakePick = null;
-
-  $('fakeTargets').innerHTML = targets.map((p) =>
-    '<button type="button" class="chip' + (fakePick === p.pid ? ' on' : '') +
-    '" data-fake="' + esc(p.pid) + '">' + esc(p.name) + '</button>'
-  ).join('');
-}
-
 function renderRoster(host, flag, doneLabel) {
   host.innerHTML = state.players.filter((p) => p.inRound).map((p) =>
     '<div class="prow' + (p.pid === state.you ? ' self' : '') + (p.connected ? '' : ' away') + '">' +
@@ -241,9 +236,9 @@ function renderReview() {
   const mine = state.players.find((p) => p.pid === state.you);
   const playing = !!mine && mine.inRound;
 
+  // 選び方の案内は上段の .notice に出しているので、ここはお題の確認だけ
   $('reviewHint').innerHTML = playing
-    ? '話し合ってから、1人を選んでください。<br>あなたのお題は「<b style="color:var(--text)">' +
-      esc(state.yourTopic) + '</b>」でした。'
+    ? 'あなたのお題は「<b style="color:var(--text)">' + esc(state.yourTopic) + '</b>」でした。'
     : 'あなたは次のラウンドから参加します。このラウンドは見ているだけです。';
 
   // 並びは回答が届いた順。この順に質問していくので番号を振る
@@ -306,16 +301,11 @@ function renderResult() {
     return '<div class="ans' + (a.pid === state.you ? ' self' : '') + '" style="cursor:default">' +
       '<div class="who">' + esc(a.name) +
         (isWolf ? '<span class="badge wolf">異端</span>' : '') +
-        (a.rewritten ? '<span class="badge rew">書き換え</span>' : '') +
         (isTop ? '<span class="badge top">最多 ' + n + '票</span>' :
                  '<span class="badge">' + n + '票</span>') +
         (dead ? '<span class="badge dead">💀 殺害</span>' : '') +
       '</div>' +
-      '<div class="ans-text">' + esc(a.shown) + '</div>' +
-      (a.rewritten
-        ? '<div class="rewritten">これは異端が書き換えたものです。' +
-          esc(a.name) + 'が実際に書いたのは <b>' + esc(a.answer) + '</b></div>'
-        : '') +
+      '<div class="ans-text">' + esc(a.answer) + '</div>' +
       (votersOf[a.pid] ? '<div class="voted-by">選んだ人: ' + esc(votersOf[a.pid].join('、')) + '</div>' : '') +
     '</div>';
   }).join('');
@@ -358,9 +348,22 @@ $('joinGo').addEventListener('click', () => {
 $('barLeave').addEventListener('click', () => {
   if (!confirm('退出しますか?')) return;
   send({ t: 'leave' });
+
+  // 先に止めないと onclose が勝手につなぎ直して、元の部屋に戻ってしまう
+  wantConnected = false;
   try { ws.close(); } catch (e) {}
   ws = null;
   state = null;
+  inputRound = -1;
+
+  // あいことばも忘れる。次に別の部屋へ入るとき邪魔になるため
+  me.room = '';
+  me.name = '';
+  saveLocal();
+
+  $('nameInput').value = '';
+  $('nameCount').textContent = '0';
+  $('roomInput').value = ROOM_WORDS[Math.floor(Math.random() * ROOM_WORDS.length)];
   show('join');
 });
 
@@ -408,46 +411,18 @@ function answerErr(msg) {
   e.textContent = msg || '';
 }
 
-$('fakeTargets').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-fake]');
-  if (!b) return;
-  fakePick = b.dataset.fake;
-  paintOddPanel();
-  answerErr('');
-});
-
-$('fakeInput').addEventListener('input', (e) => {
-  $('fakeCount').textContent = e.target.value.length;
-});
-
 $('answerSend').addEventListener('click', () => {
   const text = $('answerInput').value.trim();
   if (!text) { answerErr('あなたの答えを入れてください'); $('answerInput').focus(); return; }
 
-  const msg = { t: 'answer', text };
-
-  // 異端は書き換えも必須。3つ揃っていないと送らせない
-  if (state.youAreOdd) {
-    const fakeText = $('fakeInput').value.trim();
-    if (!fakePick) { answerErr('書き換える人を選んでください'); return; }
-    if (!fakeText) { answerErr('その人が書いたことにする答えを入れてください'); $('fakeInput').focus(); return; }
-    msg.fakeTarget = fakePick;
-    msg.fakeText = fakeText;
-  }
-
   answerErr('');
-  send(msg);
+  send({ t: 'answer', text });
 });
 
 $('answerEdit').addEventListener('click', () => {
   // サーバー側が消す前に、書いた内容を入力欄へ戻しておく
   $('answerInput').value = state.yourAnswer || '';
   $('ansCount').textContent = $('answerInput').value.length;
-  if (state.youAreOdd) {
-    fakePick = state.yourFakeTarget || null;
-    $('fakeInput').value = state.yourFakeText || '';
-    $('fakeCount').textContent = $('fakeInput').value.length;
-  }
   answerErr('');
   send({ t: 'unanswer' });
 });
@@ -485,13 +460,9 @@ function boot() {
   $('nameCount').textContent = '0';
   $('roomInput').value = me.room || ROOM_WORDS[Math.floor(Math.random() * ROOM_WORDS.length)];
 
+  // 最初の画面では自動でつながない。
+  // 勝手につなぐと、別の部屋に入りたいときに前の部屋へ引き戻される
   show('join');
-
-  // 名前もあいことばも分かっているなら、そのままつなぐ（リロード復帰）
-  if (me.name && me.room && !h) {
-    keepAwake();
-    connect();
-  }
 }
 
 window.addEventListener('hashchange', () => {

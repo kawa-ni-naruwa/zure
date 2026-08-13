@@ -128,14 +128,6 @@
   .topic-card .lb { font-size: 12px; color: var(--muted); font-weight: 600; }
   .topic { font-size: 25px; font-weight: 700; line-height: 1.45; margin-top: 10px; }
 
-  /* ---------- 異端の書き換え欄 ---------- */
-  .odd-note {
-    background: #2a1418; border: 1px solid #5c2a33; border-radius: 14px;
-    padding: 14px 16px; font-size: 13.5px; line-height: 1.65; color: var(--muted);
-  }
-  .odd-note b { display: block; color: var(--danger); font-size: 16px; margin-bottom: 4px; }
-  #fakeTargets .chip { flex: 0 1 auto; }
-
   /* ---------- 回答一覧・投票 ---------- */
   .ans-list { display: flex; flex-direction: column; gap: 10px; }
   .ans {
@@ -160,7 +152,6 @@
   .ans .badge.top { background: var(--danger); color: #fff; }
   .ans .badge.wolf { background: var(--accent); color: var(--accent-ink); }
   .ans .badge.dead { background: #000; color: var(--danger); }
-  .ans .badge.rew { background: #5c2a33; color: #ffd9de; }
   .ans .voted-by { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
   .ans .no {
     font-size: 12px; font-weight: 800; color: var(--accent);
@@ -175,11 +166,6 @@
     font-size: 14px; line-height: 1.7; color: var(--text);
     word-break: auto-phrase;
   }
-  .ans .rewritten {
-    font-size: 12.5px; line-height: 1.6; color: var(--danger);
-    background: #2a1418; border-radius: 8px; padding: 8px 10px; margin-top: 2px;
-  }
-  .ans .rewritten b { color: var(--text); }
 
   /* ---------- 待機 ---------- */
   .waiting { text-align: center; padding: 18px 0; }
@@ -300,25 +286,6 @@
       </label>
       <p>まわりに画面を見せないこと。お題そのものを口に出すのも禁止です。</p>
 
-      <div id="oddPanel" hidden>
-        <div class="odd-note" style="margin-top:16px">
-          <b>あなたは異端です</b>
-          あなただけお題が違います。バレないように答えつつ、ほかの人の回答をひとつ、好きな内容に書き換えてください。
-        </div>
-
-        <label class="field" style="margin-top:16px">
-          <span>書き換える人</span>
-          <div class="chips" id="fakeTargets"></div>
-        </label>
-
-        <label class="field" style="margin-top:16px">
-          <span>その人が書いたことにする答え</span>
-          <input type="text" id="fakeInput" maxlength="40" autocomplete="off" placeholder="ほかの人にはこれが見えます">
-          <div class="counter"><span id="fakeCount">0</span>/40</div>
-        </label>
-        <p>本人の画面には、本人が書いた答えがそのまま出ます。書き換えに気づくのは本人以外です。</p>
-      </div>
-
       <div id="answerErr" class="err" hidden style="margin-top:12px"></div>
     </div>
 
@@ -338,7 +305,7 @@
 
   <!-- ============ 回答一覧と投票 ============ -->
   <section class="screen" id="s-review">
-    <div class="notice">これから画面の上の参加者から順に、他の参加者に質問してください。ただし、質問相手は任意の1人のみで、質問も１問のみです。</div>
+    <div class="notice">参加者で話し合って、それぞれ異端だと思う人を選択してください。</div>
 
     <h2>お題が違う人は誰?</h2>
     <p id="reviewHint"></p>

@@ -246,13 +246,14 @@ function renderReview() {
       esc(state.yourTopic) + '</b>」でした。'
     : 'あなたは次のラウンドから参加します。このラウンドは見ているだけです。';
 
-  $('reviewList').innerHTML = state.answers.map((a) => {
+  // 並びは回答が届いた順。この順に質問していくので番号を振る
+  $('reviewList').innerHTML = state.answers.map((a, i) => {
     const self = a.pid === state.you;
     const picked = state.yourVote === a.pid;
     const tappable = playing && !self;
     return '<div class="ans' + (self ? ' self' : '') + (picked ? ' picked' : '') + '"' +
       (tappable ? ' data-pid="' + esc(a.pid) + '"' : ' style="cursor:default"') + '>' +
-      '<div class="who">' + esc(a.name) +
+      '<div class="who"><span class="no">' + (i + 1) + '</span>' + esc(a.name) +
         (self ? '<span class="badge">あなた</span>' : '') +
         (picked ? '<span class="badge pick">これを選択中</span>' : '') +
       '</div>' +

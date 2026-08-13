@@ -38,7 +38,7 @@ const ANSWER_MAX = 40;
 
 // 保存してある状態の形。増やしたら上げること。
 // 古い形のまま読み込むと、途中のラウンドが進まなくなる事故が起きる。
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 
 function newGame() {
   return {
@@ -46,7 +46,8 @@ function newGame() {
     phase: 'lobby',       // lobby | answer | review | result
     round: 0,
     cat: 'nomi',
-    players: [],          // { pid, name, answer, vote }
+    players: [],          // { pid, name, answer, vote, order }
+    answerSeq: 0,         // 回答が届いた順番。一覧はこの順に並べる
     roundPlayers: [],     // このラウンドに参加している pid（途中参加者は次から）
     wolfPid: null,        // 「異端」の pid（1人だけお題が違う人）
     major: null,
@@ -104,9 +105,11 @@ function startRound(g) {
   g.fakeTarget = null;
   g.fakeText = null;
 
+  g.answerSeq = 0;
   g.players.forEach((p) => {
     p.answer = null;
     p.vote = null;
+    p.order = null;
   });
 
   g.round++;
@@ -117,6 +120,12 @@ function startRound(g) {
 
 function inRound(g) {
   return g.players.filter((p) => g.roundPlayers.indexOf(p.pid) >= 0);
+}
+
+/** 回答が届いた順に並べたこのラウンドの参加者。
+    一覧も結果も必ずこの順で出す（質問の順番がこの並びで決まるため）。 */
+function inAnswerOrder(g) {
+  return inRound(g).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
 }
 
 /** 全員そろったら次のフェーズへ送る。
@@ -270,7 +279,7 @@ export class Room {
 
     if (g.phase === 'review') {
       // 書き換えられた人には本人の入力を、それ以外には偽の回答を見せる
-      view.answers = roster.map((p) => ({
+      view.answers = inAnswerOrder(g).map((p) => ({
         pid: p.pid, name: p.name, answer: answerShownTo(g, p, pid),
       }));
       view.yourVote = playing ? me.vote : null;
@@ -278,7 +287,7 @@ export class Room {
     }
 
     if (g.phase === 'result') {
-      view.answers = roster.map((p) => ({
+      view.answers = inAnswerOrder(g).map((p) => ({
         pid: p.pid, name: p.name, vote: p.vote,
         answer: p.answer,                                  // 本人が実際に入力したもの
         shown: p.pid === g.fakeTarget ? g.fakeText : p.answer,  // みんなが見ていたもの
@@ -357,6 +366,7 @@ export class Room {
         }
 
         p.answer = text;
+        p.order = ++g.answerSeq;      // 書き直すと最後尾に回る
         maybeAdvance(g);
         break;
       }
@@ -364,7 +374,7 @@ export class Room {
       case 'unanswer': {
         if (g.phase !== 'answer') break;
         const p = g.players.find((x) => x.pid === pid);
-        if (p) p.answer = null;
+        if (p) { p.answer = null; p.order = null; }
         if (pid === g.wolfPid) { g.fakeTarget = null; g.fakeText = null; }
         break;
       }

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12131a">
+<title>ゲーム</title>
+<meta name="description" content="スマホだけで遊べる会話ゲーム。1人だけお題が違う。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+<style>
+  :root {
+    --bg: #12131a;
+    --surface: #1c1e2b;
+    --surface-2: #262939;
+    --line: #333749;
+    --text: #f2f3f7;
+    --muted: #8b90a5;
+    --accent: #ffb454;
+    --accent-ink: #2a1d05;
+    --danger: #ff6b6b;
+    --ok: #5fd6a4;
+    --pad: 20px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+  }
+  body { min-height: 100svh; display: flex; justify-content: center; }
+
+  #app {
+    width: 100%; max-width: 480px;
+    display: flex; flex-direction: column; min-height: 100svh;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+
+  h1, h2, p, .topic, .rv, .rule-note, .ans-text { word-break: auto-phrase; }
+
+  /* ---------- 上部バー ---------- */
+  .bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px var(--pad); min-height: 46px;
+    font-size: 12px; color: var(--muted);
+    border-bottom: 1px solid var(--line);
+  }
+  .bar .grow { flex: 1; }
+  .bar b { color: var(--text); font-weight: 600; }
+  .bar button {
+    background: none; border: none; color: var(--muted);
+    font-size: 13px; padding: 6px; cursor: pointer; font-family: inherit;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+  .dot.off { background: var(--danger); }
+
+  /* ---------- 画面 ---------- */
+  .screen { display: none; flex-direction: column; flex: 1; padding: var(--pad); gap: 16px; }
+  .screen.on { display: flex; }
+  .spacer { flex: 1; }
+
+  h1 { font-size: 30px; line-height: 1.25; margin: 0; letter-spacing: -0.02em; }
+  h2 { font-size: 20px; margin: 0; line-height: 1.35; }
+  p { margin: 0; line-height: 1.7; color: var(--muted); font-size: 14px; }
+
+  button.btn {
+    font-family: inherit; font-size: 17px; font-weight: 600;
+    padding: 18px; border-radius: 14px; border: none;
+    background: var(--accent); color: var(--accent-ink);
+    width: 100%; cursor: pointer; transition: transform .08s;
+  }
+  button.btn:active { transform: scale(.98); }
+  button.btn.sub { background: var(--surface-2); color: var(--text); }
+  button.btn.ghost {
+    background: none; border: 1px solid var(--line); color: var(--muted);
+    font-weight: 500; font-size: 15px; padding: 14px;
+  }
+  button.btn:disabled { opacity: .35; }
+
+  label.field > span {
+    display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; font-weight: 600;
+  }
+  input[type=text] {
+    width: 100%; font-family: inherit; font-size: 20px; font-weight: 600;
+    padding: 16px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  input[type=text].center { text-align: center; letter-spacing: .08em; }
+  .counter { font-size: 12px; color: var(--muted); text-align: right; margin-top: 6px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-family: inherit; font-size: 15px; padding: 12px 18px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--muted);
+    cursor: pointer; font-weight: 600; flex: 1;
+  }
+  .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  .toggle {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px; cursor: pointer;
+  }
+  .toggle .tt { flex: 1; }
+  .toggle .tt b { display: block; font-size: 15px; margin-bottom: 3px; }
+  .toggle .tt span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .toggle .sw {
+    width: 48px; height: 29px; border-radius: 15px; background: var(--surface-2);
+    position: relative; transition: background .15s; flex: none;
+  }
+  .toggle .sw::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 23px; height: 23px; border-radius: 50%; background: var(--muted);
+    transition: transform .15s, background .15s;
+  }
+  .toggle.on .sw { background: var(--accent); }
+  .toggle.on .sw::after { transform: translateX(19px); background: #fff; }
+
+  /* ---------- 参加者一覧 ---------- */
+  .roster { display: flex; flex-direction: column; gap: 8px; }
+  .prow {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--line);
+  }
+  .prow .nm { font-weight: 700; font-size: 16px; flex: 1; }
+  .prow.self .nm::after {
+    content: 'あなた'; font-size: 11px; color: var(--accent);
+    margin-left: 8px; font-weight: 700;
+  }
+  .prow .st { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .prow .st.done { color: var(--ok); }
+  .prow.away { opacity: .45; }
+  .prow.late { border-style: dashed; }
+
+  /* ---------- お題 ---------- */
+  .topic-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 18px; padding: 24px 20px; text-align: center;
+  }
+  .topic-card .lb { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .topic { font-size: 25px; font-weight: 700; line-height: 1.45; margin-top: 10px; }
+  .mission-box { border-top: 1px dashed var(--line); padding-top: 14px; margin-top: 16px; }
+  .mission-box .ml { font-size: 11px; color: var(--accent); font-weight: 700; letter-spacing: .1em; }
+  .mission-box .mv { font-size: 15px; font-weight: 600; line-height: 1.5; margin-top: 5px; }
+
+  /* ---------- 回答一覧・投票 ---------- */
+  .ans-list { display: flex; flex-direction: column; gap: 10px; }
+  .ans {
+    padding: 14px 16px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--line);
+    cursor: pointer; transition: transform .08s;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .ans:active { transform: scale(.99); }
+  .ans .who {
+    font-size: 12px; color: var(--muted); font-weight: 700;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .ans-text { font-size: 18px; font-weight: 700; line-height: 1.45; }
+  .ans.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--surface-2); }
+  .ans.self { opacity: .55; cursor: default; }
+  .ans .badge {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    background: var(--surface-2); color: var(--muted);
+  }
+  .ans .badge.pick { background: var(--accent); color: var(--accent-ink); }
+  .ans .badge.top { background: var(--danger); color: #fff; }
+  .ans .badge.wolf { background: var(--accent); color: var(--accent-ink); }
+  .ans .badge.dead { background: #000; color: var(--danger); }
+  .ans .voted-by { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- 待機 ---------- */
+  .waiting { text-align: center; padding: 18px 0; }
+  .waiting .big { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+  .waiting .cap { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+
+  /* ---------- 結果 ---------- */
+  .verdict { text-align: center; padding: 24px 18px; border-radius: 18px; }
+  .verdict .label { font-size: 12px; font-weight: 700; letter-spacing: .12em; opacity: .8; }
+  .verdict .big { font-size: 32px; font-weight: 800; margin-top: 6px; letter-spacing: -0.02em; }
+  .verdict.maj { background: linear-gradient(160deg, #4fb3ff, #3d7bd9); color: #fff; }
+  .verdict.min { background: linear-gradient(160deg, #ff6b6b, #d94a63); color: #fff; }
+
+  .reveal-row {
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 13px 16px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--line);
+  }
+  .reveal-row .rl { font-size: 11.5px; color: var(--muted); font-weight: 700; letter-spacing: .06em; }
+  .reveal-row .rv { font-size: 16px; font-weight: 600; line-height: 1.5; }
+
+  .rule-note {
+    background: var(--surface-2); border-radius: 12px; padding: 14px 16px;
+    font-size: 13.5px; line-height: 1.65; color: var(--muted);
+  }
+  .rule-note b { color: var(--accent); }
+  .rule-note.kill { background: #2a1418; }
+  .rule-note.kill b { color: var(--danger); }
+
+  .copied { color: var(--ok) !important; }
+  .err { color: var(--danger); font-size: 13px; font-weight: 600; }
+
+  /* ---------- 殺害演出 ---------- */
+  #killScreen {
+    position: fixed; inset: 0; z-index: 50;
+    background: #08090d;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; text-align: center; padding: 30px;
+    animation: killIn .5s ease;
+  }
+  @keyframes killIn { from { opacity: 0; } }
+  #killScreen .skull { font-size: 110px; line-height: 1; animation: pulse 2.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.07); opacity: .75; } }
+  #killScreen .msg-top { font-size: 17px; font-weight: 700; color: var(--muted); letter-spacing: .06em; }
+  #killScreen .msg {
+    font-size: 33px; font-weight: 800; color: var(--danger);
+    letter-spacing: -0.01em; white-space: nowrap; margin-top: -6px;
+  }
+  #killScreen .by { font-size: 15px; color: var(--muted); line-height: 1.7; }
+  #killScreen .tap { font-size: 13px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <div class="bar" id="topbar" hidden>
+    <span class="dot" id="netDot"></span>
+    <span id="barInfo"></span>
+    <span class="grow"></span>
+    <button id="barLeave">退出</button>
+  </div>
+
+  <!-- ============ 名前の登録 ============ -->
+  <section class="screen on" id="s-join">
+    <div class="spacer"></div>
+    <div>
+      <h1>ゲーム</h1>
+      <p style="margin-top:12px">全員に同じお題が配られます。<br>でも1人だけ、少し違うお題。<br>回答を見比べて、それが誰かを当ててください。</p>
+    </div>
+    <div class="spacer"></div>
+
+    <label class="field">
+      <span>名前</span>
+      <input type="text" id="nameInput" maxlength="12" autocomplete="off" placeholder="かわ">
+      <div class="counter"><span id="nameCount">0</span>/12</div>
+    </label>
+
+    <label class="field">
+      <span>あいことば（同じ部屋に入るための合言葉）</span>
+      <input type="text" id="roomInput" class="center" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </label>
+
+    <div id="joinErr" class="err" hidden></div>
+    <div class="spacer"></div>
+    <button class="btn" id="joinGo">参加する</button>
+  </section>
+
+  <!-- ============ ロビー ============ -->
+  <section class="screen" id="s-lobby">
+    <h2>参加者 <span id="lobbyCount"></span></h2>
+    <div class="roster" id="lobbyRoster"></div>
+
+    <button class="btn sub" id="copyLink">招待リンクをコピー</button>
+
+    <label class="field">
+      <span>お題のジャンル</span>
+      <div class="chips" id="catChips"></div>
+    </label>
+
+    <div class="toggle" id="missionToggle">
+      <div class="tt">
+        <b>個人ミッション</b>
+        <span>全員に秘密の裏目標が配られます。会話が転がるので初対面が混ざる会ほど効きます</span>
+      </div>
+      <div class="sw"></div>
+    </div>
+
+    <div class="spacer"></div>
+    <p id="lobbyHint" style="text-align:center"></p>
+    <button class="btn" id="startBtn">このメンバーでスタート</button>
+  </section>
+
+  <!-- ============ 回答の入力 ============ -->
+  <section class="screen" id="s-answer">
+    <div class="topic-card">
+      <div class="lb">あなたのお題</div>
+      <div class="topic" id="myTopic"></div>
+      <div class="mission-box" id="myMissionBox" hidden>
+        <div class="ml">MISSION</div>
+        <div class="mv" id="myMission"></div>
+      </div>
+    </div>
+
+    <div id="answerForm">
+      <label class="field">
+        <span>あなたの答え（ひとつだけ）</span>
+        <input type="text" id="answerInput" maxlength="40" autocomplete="off" placeholder="思いついたものをひとつ">
+        <div class="counter"><span id="ansCount">0</span>/40</div>
+      </label>
+      <p>まわりに画面を見せないこと。お題そのものを口に出すのも禁止です。</p>
+    </div>
+
+    <div id="answerDone" hidden>
+      <div class="waiting">
+        <div class="big" id="ansProgress"></div>
+        <div class="cap">が回答済み</div>
+      </div>
+      <div class="roster" id="answerRoster"></div>
+    </div>
+
+    <div class="spacer"></div>
+    <button class="btn" id="answerSend">この答えで送信</button>
+    <button class="btn ghost" id="answerEdit" hidden>答えを書き直す</button>
+  </section>
+
+  <!-- ============ 回答一覧と投票 ============ -->
+  <section class="screen" id="s-review">
+    <h2>お題が違う人は誰?</h2>
+    <p id="reviewHint"></p>
+
+    <div class="ans-list" id="reviewList"></div>
+
+    <div class="waiting">
+      <div class="big" id="voteProgress"></div>
+      <div class="cap">が選択済み</div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="rule-note">全員が選び終わると自動で集計されます。それまでは選び直せます。</div>
+  </section>
+
+  <!-- ============ 結果 ============ -->
+  <section class="screen" id="s-result">
+    <div class="verdict" id="verdict">
+      <div class="label" id="verdictLabel"></div>
+      <div class="big" id="verdictBig"></div>
+    </div>
+
+    <div class="rule-note kill" id="killNote" hidden></div>
+
+    <div class="reveal-row"><div class="rl">多数派のお題</div><div class="rv" id="revMaj"></div></div>
+    <div class="reveal-row"><div class="rl">少数派のお題</div><div class="rv" id="revMin"></div></div>
+
+    <h2 style="margin-top:6px">全員の回答と投票</h2>
+    <div class="ans-list" id="resultList"></div>
+
+    <div class="rule-note" id="resultMission" hidden></div>
+
+    <div class="spacer"></div>
+    <button class="btn" id="nextRound">次のラウンドへ</button>
+    <button class="btn ghost" id="backLobby">ロビーに戻る（人を追加する）</button>
+  </section>
+
+</div>
+
+<!-- 殺害された人だけに出る -->
+<div id="killScreen" hidden>
+  <div class="skull">💀</div>
+  <div class="msg-top">あなたは</div>
+  <div class="msg">殺害されました</div>
+  <div class="by" id="killBy"></div>
+  <div class="tap">タップして結果を見る</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

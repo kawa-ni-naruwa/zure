@@ -1,0 +1,13 @@
+{
+  "name": "zure",
+  "version": "2.0.0",
+  "private": true,
+  "description": "スマホで遊ぶ会話ゲーム。1人だけお題が違う。",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

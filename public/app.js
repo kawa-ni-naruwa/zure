@@ -26,6 +26,7 @@ let ws = null;
 let state = null;
 let retry = 0;
 let killShown = -1;   // ドクロ演出を出したラウンド。同じラウンドで二度出さない
+let fakePick = null;  // 異端が書き換える相手。送信するまで手元に置いておく
 
 /* ---------- 保存 ---------- */
 
@@ -181,6 +182,8 @@ function renderAnswer() {
   }
 
   $('myTopic').textContent = state.yourTopic || '';
+  paintOddPanel();
+
   const answered = state.yourAnswer != null;
   $('answerForm').hidden = answered;
   $('answerSend').hidden = answered;
@@ -203,6 +206,23 @@ function paintDropButton(btn, flag) {
   btn.hidden = false;
   btn.textContent = '切断中の ' + stuck.map((p) => p.name).join('、') + ' を待たずに進む';
   btn.onclick = () => stuck.forEach((p) => send({ t: 'drop', target: p.pid }));
+}
+
+/** 異端だけに出る書き換え欄。
+    ほかの人が回答するたび再描画が走るので、
+    選択中の相手と入力中の文字を消さないように気をつける。 */
+function paintOddPanel() {
+  const panel = $('oddPanel');
+  if (!state.youAreOdd) { panel.hidden = true; return; }
+  panel.hidden = false;
+
+  const targets = state.players.filter((p) => p.inRound && p.pid !== state.you);
+  if (fakePick && !targets.some((p) => p.pid === fakePick)) fakePick = null;
+
+  $('fakeTargets').innerHTML = targets.map((p) =>
+    '<button type="button" class="chip' + (fakePick === p.pid ? ' on' : '') +
+    '" data-fake="' + esc(p.pid) + '">' + esc(p.name) + '</button>'
+  ).join('');
 }
 
 function renderRoster(host, flag, doneLabel) {
@@ -254,8 +274,8 @@ function renderResult() {
 
   const majorWon = r.winner === 'major';
   $('verdict').className = 'verdict ' + (majorWon ? 'maj' : 'min');
-  $('verdictLabel').textContent = majorWon ? '少数派を当てた' : '少数派が逃げ切った';
-  $('verdictBig').textContent = majorWon ? '多数派の勝ち' : '少数派の勝ち';
+  $('verdictLabel').textContent = majorWon ? '異端を当てた' : '異端が逃げ切った';
+  $('verdictBig').textContent = majorWon ? '多数派の勝ち' : '異端の勝ち';
 
   $('revMaj').textContent = state.major;
   $('revMin').textContent = state.minor;
@@ -264,8 +284,8 @@ function renderResult() {
   if (r.killed) {
     $('killNote').hidden = false;
     $('killNote').innerHTML =
-      '<b>' + esc(nameOf(r.killed)) + ' は少数派に殺害されました。</b><br>' +
-      '少数派の ' + esc(nameOf(state.wolfPid)) + ' と互いに選び合っていたためです。';
+      '<b>' + esc(nameOf(r.killed)) + ' は異端に殺害されました。</b><br>' +
+      '異端の ' + esc(nameOf(state.wolfPid)) + ' と互いに選び合っていたためです。';
   } else {
     $('killNote').hidden = true;
   }
@@ -284,12 +304,17 @@ function renderResult() {
     const dead = r.killed === a.pid;
     return '<div class="ans' + (a.pid === state.you ? ' self' : '') + '" style="cursor:default">' +
       '<div class="who">' + esc(a.name) +
-        (isWolf ? '<span class="badge wolf">少数派</span>' : '') +
+        (isWolf ? '<span class="badge wolf">異端</span>' : '') +
+        (a.rewritten ? '<span class="badge rew">書き換え</span>' : '') +
         (isTop ? '<span class="badge top">最多 ' + n + '票</span>' :
                  '<span class="badge">' + n + '票</span>') +
         (dead ? '<span class="badge dead">💀 殺害</span>' : '') +
       '</div>' +
-      '<div class="ans-text">' + esc(a.answer) + '</div>' +
+      '<div class="ans-text">' + esc(a.shown) + '</div>' +
+      (a.rewritten
+        ? '<div class="rewritten">これは異端が書き換えたものです。' +
+          esc(a.name) + 'が実際に書いたのは <b>' + esc(a.answer) + '</b></div>'
+        : '') +
       (votersOf[a.pid] ? '<div class="voted-by">選んだ人: ' + esc(votersOf[a.pid].join('、')) + '</div>' : '') +
     '</div>';
   }).join('');
@@ -298,7 +323,7 @@ function renderResult() {
   if (state.youAreKilled && killShown !== state.round) {
     killShown = state.round;
     $('killBy').innerHTML =
-      '少数派の <b style="color:var(--text)">' + esc(nameOf(state.wolfPid)) + '</b> と<br>' +
+      '異端の <b style="color:var(--text)">' + esc(nameOf(state.wolfPid)) + '</b> と<br>' +
       '互いに選び合っていました。';
     $('killScreen').hidden = false;
     if (navigator.vibrate) navigator.vibrate([120, 80, 120, 80, 260]);
@@ -376,16 +401,54 @@ $('answerInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); $('answerSend').click(); }
 });
 
+function answerErr(msg) {
+  const e = $('answerErr');
+  e.hidden = !msg;
+  e.textContent = msg || '';
+}
+
+$('fakeTargets').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-fake]');
+  if (!b) return;
+  fakePick = b.dataset.fake;
+  paintOddPanel();
+  answerErr('');
+});
+
+$('fakeInput').addEventListener('input', (e) => {
+  $('fakeCount').textContent = e.target.value.length;
+});
+
 $('answerSend').addEventListener('click', () => {
   const text = $('answerInput').value.trim();
-  if (!text) { $('answerInput').focus(); return; }
-  send({ t: 'answer', text });
+  if (!text) { answerErr('あなたの答えを入れてください'); $('answerInput').focus(); return; }
+
+  const msg = { t: 'answer', text };
+
+  // 異端は書き換えも必須。3つ揃っていないと送らせない
+  if (state.youAreOdd) {
+    const fakeText = $('fakeInput').value.trim();
+    if (!fakePick) { answerErr('書き換える人を選んでください'); return; }
+    if (!fakeText) { answerErr('その人が書いたことにする答えを入れてください'); $('fakeInput').focus(); return; }
+    msg.fakeTarget = fakePick;
+    msg.fakeText = fakeText;
+  }
+
+  answerErr('');
+  send(msg);
 });
 
 $('answerEdit').addEventListener('click', () => {
-  send({ t: 'unanswer' });
+  // サーバー側が消す前に、書いた内容を入力欄へ戻しておく
   $('answerInput').value = state.yourAnswer || '';
   $('ansCount').textContent = $('answerInput').value.length;
+  if (state.youAreOdd) {
+    fakePick = state.yourFakeTarget || null;
+    $('fakeInput').value = state.yourFakeText || '';
+    $('fakeCount').textContent = $('fakeInput').value.length;
+  }
+  answerErr('');
+  send({ t: 'unanswer' });
 });
 
 /* --- 投票 --- */

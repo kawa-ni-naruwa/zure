@@ -131,6 +131,9 @@
     background: var(--surface-2); border-radius: 12px;
     padding: 14px 10px; font-size: 26px; font-weight: 800; letter-spacing: .02em;
   }
+  /* 「みんなでカラオケ」のような長い語が横にはみ出さないように */
+  .word.long { font-size: 21px; }
+  .word.longer { font-size: 18px; letter-spacing: 0; }
   .words-inline { font-weight: 700; color: var(--text); }
   .words-inline .sep { color: var(--muted); font-weight: 400; margin: 0 6px; }
 
@@ -309,23 +312,23 @@
   <!-- ============ 回答の入力 ============ -->
   <section class="screen" id="s-answer">
     <div class="topic-card">
-      <div class="lb">あなたのキーワード</div>
+      <div class="lb">あなたのお題</div>
       <div class="words" id="myWords"></div>
     </div>
 
     <div class="odd-note" id="oddNote" hidden>
       <b>あなたは異端です</b>
       3つのうち<b style="display:inline;font-size:inherit">1つだけ</b>、ほかの人とは違う言葉が混ざっています。
-      どれが違うのかは分かりません。バレないように連想してください。
+      どれが違うのかは分かりません。バレないように答えてください。
     </div>
 
     <div id="answerForm">
       <label class="field">
-        <span>この3つから連想される言葉（ひとつだけ）</span>
-        <input type="text" id="answerInput" maxlength="40" autocomplete="off" placeholder="連想した言葉をひとつ">
+        <span>3つを組み合わせて思い浮かぶもの（ひとつだけ）</span>
+        <input type="text" id="answerInput" maxlength="40" autocomplete="off" placeholder="思い浮かんだものをひとつ">
         <div class="counter"><span id="ansCount">0</span>/40</div>
       </label>
-      <p>まわりに画面を見せないこと。キーワードそのものを口に出すのも禁止です。</p>
+      <p>まわりに画面を見せないこと。3つの言葉そのものを口に出すのも禁止です。</p>
 
       <div id="answerErr" class="err" hidden style="margin-top:12px"></div>
     </div>
@@ -373,8 +376,8 @@
 
     <div class="rule-note kill" id="killNote" hidden></div>
 
-    <div class="reveal-row"><div class="rl">多数派のキーワード</div><div class="word-reveal" id="revMaj"></div></div>
-    <div class="reveal-row"><div class="rl">異端のキーワード</div><div class="word-reveal" id="revMin"></div></div>
+    <div class="reveal-row"><div class="rl">多数派のお題</div><div class="word-reveal" id="revMaj"></div></div>
+    <div class="reveal-row"><div class="rl">異端のお題</div><div class="word-reveal" id="revMin"></div></div>
 
     <h2 style="margin-top:6px">全員の回答と投票</h2>
     <div class="ans-list" id="resultList"></div>

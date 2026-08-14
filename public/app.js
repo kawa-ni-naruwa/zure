@@ -281,7 +281,8 @@ function renderAnswer() {
   }
 
   $('myWords').innerHTML = (state.words || [])
-    .map((w) => '<div class="word">' + esc(w) + '</div>').join('');
+    .map((w) => '<div class="word' +
+      (w.length >= 8 ? ' longer' : w.length >= 6 ? ' long' : '') + '">' + esc(w) + '</div>').join('');
   $('oddNote').hidden = !state.youAreOdd;
 
   const answered = state.yourAnswer != null;
@@ -326,7 +327,7 @@ function renderReview() {
 
   // 選び方の案内は上段の .notice に出しているので、ここはお題の確認だけ
   $('reviewHint').innerHTML = playing
-    ? 'あなたのキーワードは <span class="words-inline">' +
+    ? 'あなたのお題は <span class="words-inline">' +
       (state.words || []).map(esc).join('<span class="sep">/</span>') + '</span> でした。'
     : 'あなたは次のラウンドから参加します。このラウンドは見ているだけです。';
 

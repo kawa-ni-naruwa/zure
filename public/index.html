@@ -149,7 +149,7 @@
   }
   .odd-note b { color: var(--danger); font-weight: 700; }
 
-  /* 結果画面のキーワード開示 */
+  /* 結果画面のお題の開示 */
   .word-reveal { display: flex; flex-wrap: wrap; gap: 6px; }
   .word-reveal span {
     background: var(--surface-2); border-radius: 8px; padding: 6px 11px;
@@ -207,6 +207,9 @@
     border-radius: 10px; padding: 14px 16px;
     font-size: 14px; line-height: 1.7; color: var(--text);
     word-break: auto-phrase;
+  }
+  .notice b {
+    color: var(--accent); font-weight: 800; font-size: 16px;
   }
 
   /* ---------- 待機 ---------- */
@@ -352,7 +355,7 @@
 
   <!-- ============ 回答一覧と投票 ============ -->
   <section class="screen" id="s-review">
-    <div class="notice">キーワードを口に出さずに、参加者で話し合い、それぞれ異端だと思う人を選択してください。</div>
+    <div class="notice"><b>お題の3つの単語を口に出さずに</b>、参加者で話し合い、それぞれ異端だと思う人を選択してください。</div>
 
     <h2>お題が違う人は誰?</h2>
     <p id="reviewHint"></p>
